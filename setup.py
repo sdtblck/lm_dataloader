@@ -7,7 +7,7 @@ name = "lm_dataloader"
 setup(
     name=name,
     packages=find_packages(),
-    version="0.0.1",
+    version="0.0.2",
     license="MIT",
     description="Dataloader tools for language modelling",
     long_description=long_description,
