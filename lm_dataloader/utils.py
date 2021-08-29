@@ -36,6 +36,16 @@ def is_main():
         return True
 
 
+def get_rank():
+    """Returns the rank of the current process.
+    If torch distributed is not initialized, returns 0 (since there is assumed to only be the one process)
+    """
+    if torch.distributed.is_initialized():
+        return torch.distributed.get_rank()
+    else:
+        return 0
+
+
 def print_rank_0(*message):
     """If distributed is initialized print only on rank 0."""
     if torch.distributed.is_initialized():

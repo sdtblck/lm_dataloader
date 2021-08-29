@@ -19,18 +19,17 @@
 """GPT2 style dataset."""
 
 import os
-from .utils import get_cache_dir
 import time
 
 import numpy as np
 import torch
 
 try:
-    from .utils import print_rank_0, is_main
+    from .utils import print_rank_0, is_main, get_cache_dir
     from .indexed_dataset import make_indexed_dataset
 
 except ImportError:
-    from utils import print_rank_0, is_main
+    from utils import print_rank_0, is_main, get_cache_dir
     from indexed_dataset import make_indexed_dataset
 from pathlib import Path
 

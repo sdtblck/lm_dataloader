@@ -6,3 +6,15 @@ from .indexed_dataset import (
     inspect_dataset,
     merge_datasets,
 )
+from .utils import compile_helpers
+
+try:
+    from .helpers import *
+except ModuleNotFoundError:
+    try:
+        compile_helpers()
+        from .helpers import *
+    except ModuleNotFoundError:
+        print(
+            "Not able to compile C++ helpers. Some functions may be slower, or not work at all (blendable_dataset)"
+        )
