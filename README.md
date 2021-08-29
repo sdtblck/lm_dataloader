@@ -37,9 +37,9 @@ tokenizer = GPT2TokenizerFast.from_pretrained('gpt2')
 
 lmdl.encode(
     jsonl_path,
+    output_prefix=output,
     tokenize_fn=tokenizer.encode,
     tokenizer_vocab_size=len(tokenizer),
-    output_prefix=output,
     eod_token=tokenizer.eos_token_id,
 )
 ```
@@ -48,6 +48,7 @@ This will create a dataset at "my_dataset.lmd" which can be loaded as an indexed
 
 ```python
 from lm_dataloader import LMDataset
+from transformers import GPT2TokenizerFast 
 
 tokenizer = GPT2TokenizerFast.from_pretrained('gpt2')
 seq_length = tokenizer.model_max_length # or whatever the sequence length of your model is
