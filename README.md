@@ -11,12 +11,12 @@ pip install lm_dataloader
 - Minimal changes needed from small -> large scale (many multiple GPU nodes)
 
 - follows fairseq / megatron's 'mmap' dataformat, but with improvements. Those being:
-    - [ ] Datasets should easily be able to be combined (blendable dataset does this I guess)
+    - [x] Easily combine multiple datasets
     - [x] unified into a single 'file' (which is actually a directory containing a .bin / .idx file)
-    - [ ] index files that are built on the fly are hidden files, no longer leaving less mess in the directory.
+    - [x] index files that are built on the fly are hidden files, leaving less mess in the directory.
     - [ ] More straightforward interface, better documentation.
-    - [ ] Inspectable with a command line tool
-    - [ ] Can load from urls
+    - [x] Inspectable with a command line tool
+    - [x] Can load from urls
     - [ ] Can load from S3 buckets
     - [ ] Can load from GCS buckets
     - [ ] Can tokenize *on the fly* instead of preprocessing
