@@ -17,7 +17,8 @@ setup(
     author_email="sdtblck@gmail.com",
     install_requires=[
         "torch",
-        "numpy," "lm_dataformat==0.0.20",
+        "numpy",
+        "lm_dataformat==0.0.20",
         "ftfy",
         "tqdm",
         "requests",
@@ -30,5 +31,5 @@ setup(
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
     ],
-    entry_points={"console_scripts": ["lm-dataloader=lm_dataloder.cmd_line:main"]},
+    entry_points={"console_scripts": ["lm-dataloader=lm_dataloader.cmd_line:main"]},
 )
