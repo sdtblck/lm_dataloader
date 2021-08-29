@@ -1,0 +1,6 @@
+torch
+numpy
+lm_dataformat==0.0.20
+ftfy
+tqdm
+requests
