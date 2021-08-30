@@ -23,6 +23,9 @@ pip install lm_dataloader
     - [ ] Can load from GCS buckets
     - [ ] Can tokenize *on the fly* instead of preprocessing
 
+Misc. TODO:
+    - [ ] Option to set mpu globally (for distributed dataloading)
+
 # Example usage
 
 To tokenize a dataset contained in a .jsonl file (where the text to be tokenized can be accessed under the 'text' key):

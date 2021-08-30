@@ -26,31 +26,45 @@ import torch
 
 try:
     from .utils import print_rank_0, is_main, get_cache_dir
-    from .indexed_dataset import make_indexed_dataset
-
+    from .indexed_dataset import make_indexed_dataset, MMapIndexedDataset
 except ImportError:
+    print("got an import error")
     from utils import print_rank_0, is_main, get_cache_dir
-    from indexed_dataset import make_indexed_dataset
+    from indexed_dataset import make_indexed_dataset, MMapIndexedDataset
+
 from pathlib import Path
+from typing import Optional, Union, List, Any
+from tqdm import tqdm
 
 
 class LMDataset(torch.utils.data.Dataset):
     def __init__(
         self,
-        data_prefix,
-        seq_length,
-        num_samples=None,
-        seed=0,
-        build_index_mappings=True,
+        data_prefix: Union[str, Path],
+        seq_length: int,
+        num_samples: Optional[int] = None,
+        indexed_dataset: Optional[MMapIndexedDataset] = None,
+        documents: Optional[np.ndarray] = None,
+        seed: int = 0,
+        build_index_mappings: bool = True,
         mpu=None,
-        cache_dir=None,
-        skip_warmup=False,
+        cache_dir: Optional[Union[str, Path]] = None,
+        skip_warmup: bool = False,
     ):
-        self.cache_dir = get_cache_dir(cache_dir)
-        self.indexed_dataset = make_indexed_dataset(
-            data_prefix, cache_dir=self.cache_dir, skip_warmup=skip_warmup
-        )
-        self.mpu = mpu
+        print(f"Beginning init of {self}")
+        self.cache_dir = get_cache_dir(
+            cache_dir
+        )  # set cache_dir to cache_dir if it exists
+
+        # If no indexed dataset is provided, build one. Otherwise, just use the one provided
+        if indexed_dataset is None:
+            self.indexed_dataset = make_indexed_dataset(
+                data_prefix, cache_dir=self.cache_dir, skip_warmup=skip_warmup
+            )
+        else:
+            self.indexed_dataset = indexed_dataset
+
+        self.mpu = mpu  # optional mpu object from megatron
         self.data_prefix = (
             self.indexed_dataset._path
         )  # get actual prefix from indexed_dataset, data_prefix may be url or local path
@@ -61,12 +75,16 @@ class LMDataset(torch.utils.data.Dataset):
         self.sizes = self.indexed_dataset.sizes
 
         # build document index
-        total_num_of_documents = self.indexed_dataset.sizes.shape[0]
-        print_rank_0("    {}:".format(self.name))
-        print_rank_0("     no. of documents:{}".format(total_num_of_documents))
-        self.documents = np.arange(
-            start=0, stop=total_num_of_documents, step=1, dtype=np.int32
-        )
+        if documents is None:
+            total_num_of_documents = self.indexed_dataset.sizes.shape[0]
+            # TODO: cleaner printing
+            print_rank_0("    {}:".format(self.name))
+            print_rank_0("     no. of documents:{}".format(total_num_of_documents))
+            self.documents = np.arange(
+                start=0, stop=total_num_of_documents, step=1, dtype=np.int32
+            )
+        else:
+            self.documents = documents
 
         self.num_samples = num_samples or self.tokens_per_epoch() // self.seq_length
 
@@ -137,6 +155,7 @@ class LMDataset(torch.utils.data.Dataset):
         # Number of tokens in each epoch and number of required epochs.
         tokens_per_epoch = self.tokens_per_epoch()
         num_epochs = _num_epochs(tokens_per_epoch, self.seq_length, self.num_samples)
+
         # rng state
         np_rng = np.random.RandomState(seed=self.seed)
 
@@ -177,9 +196,9 @@ class LMDataset(torch.utils.data.Dataset):
                 assert self.sizes.dtype == np.int32
 
                 try:
-                    import helpers
+                    from .helpers import build_sample_idx
 
-                    sample_idx = helpers.build_sample_idx(
+                    sample_idx = build_sample_idx(
                         self.sizes,
                         doc_idx,
                         self.seq_length,
@@ -246,6 +265,7 @@ def _num_epochs(tokens_per_epoch, seq_length, num_samples):
     epochs will be needed."""
     num_epochs = 0
     total_tokens = 0
+    assert tokens_per_epoch > 0
     while True:
         num_epochs += 1
         total_tokens += tokens_per_epoch
@@ -325,6 +345,77 @@ def _build_sample_idx(sizes, doc_idx, seq_length, num_epochs, tokens_per_epoch):
     return sample_idx
 
 
-# if __name__ == "__main__":
-#     dataset = LMDataset("test/dummy.jsonl.zst", seq_length=1024)
-#     print("done")
+def from_splits(
+    indexed_dataset: MMapIndexedDataset,
+    splits: Union[List[float], str],
+    num_samples: List[int],
+    seq_length: int,
+    seed: int = 0,
+    mpu: Optional[Any] = None,
+) -> List[LMDataset]:
+    """
+    Build an `LMDataset` from an indexed dataset and a list of splits.
+
+    :param indexed_dataset:
+        The indexed dataset to build splits from.
+    :param splits:
+        A list of floats or a string. If a string, it should be a comma-separated
+        list of floats between 0.0 and 1.0.
+    :param num_samples:
+        A list of integers representing the number of samples in each split.
+    :param seq_length:
+        The sequence length of the model
+    :param seed:
+        The random seed to use for shuffling.
+    :param mpu:
+        If using multiprocessing, provide an mpu.
+    """
+    if isinstance(splits, str):
+        splits = [float(x) for x in splits.split(",")]
+
+    # get rid of zeros and negative values
+    assert len(splits) == len(num_samples)
+    _splits, _num_samples = [], []
+    for i in range(len(splits)):
+        if splits[i] > 0.0:
+            _splits.append(splits[i])
+            _num_samples.append(num_samples[i])
+    splits, num_samples = _splits, _num_samples
+
+    # normalize
+    splits_sum = sum(splits)
+    assert splits_sum > 0.0
+    splits = [split / splits_sum for split in splits]
+
+    # upweight to size of the dataset
+    total_docs = len(indexed_dataset)
+    splits_num_docs = [int(round(s * total_docs)) for s in splits]
+    assert sum(splits_num_docs) == total_docs
+
+    # build the datasets
+    datasets = []
+
+    for idx, n in enumerate(
+        tqdm(splits_num_docs, desc=f"Building datasets from splits: {splits_num_docs}")
+    ):
+        if idx == 0:
+            # first split, start at 0
+            start = 0
+        else:
+            # otherwise, the start is the end of the previous split
+            start = splits_num_docs[idx - 1]
+        end = start + n
+        datasets.append(
+            LMDataset(
+                data_prefix="",  # not needed, as we're providing indexed_dataset,
+                seq_length=seq_length,
+                num_samples=num_samples[idx],
+                indexed_dataset=indexed_dataset,
+                documents=np.arange(start=start, stop=end, dtype=np.int32),
+                seed=seed,
+                mpu=mpu,
+            )
+        )
+
+    return datasets
+    

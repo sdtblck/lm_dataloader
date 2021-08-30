@@ -1,6 +1,7 @@
 from .lm_dataset import LMDataset
 from .encode import encode
 from .indexed_dataset import (
+    make_indexed_dataset,
     MMapIndexedDataset,
     dataset_exists,
     inspect_dataset,

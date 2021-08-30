@@ -72,3 +72,34 @@ def download(args: Tuple[str, str]):
                     os.fsync(f.fileno())
     else:  # HTTP status code 4XX/5XX
         raise r.raise_for_status()
+
+
+def weights_by_num_docs(l, alpha=0.3):
+    """
+    Builds weights from a multinomial distribution over groups of data according to the number of
+    samples in each group.
+    We sample from a group according to the probability p(L) ∝ |L| ** α,
+    where p(L) is the probability of sampling from a given group,
+          |L| is the number of examples in that datapoint,
+          and α is a coefficient that acts to upsample data from underrepresented groups
+    Hence α (`alpha`) allows us to control how much to 'boost' the probability of training on low-resource groups.
+    See https://arxiv.org/abs/1911.02116 for more details
+    """
+    total_n_docs = sum(l)
+    unbiased_sample_probs = [i / total_n_docs for i in l]
+
+    probs = [i ** alpha for i in unbiased_sample_probs]
+
+    # normalize
+    total = sum(probs)
+    probs = [i / total for i in probs]
+
+    # weights should be the inverse of the number of samples
+    unbiased_sample_probs_inverse = [1 - p for p in unbiased_sample_probs]
+    weights = [p * p2 for p, p2 in zip(probs, unbiased_sample_probs_inverse)]
+
+    # normalize
+    total = sum(weights)
+    weights = [i / total for i in weights]
+
+    return weights

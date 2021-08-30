@@ -23,7 +23,7 @@ except ImportError:
 
 from pathlib import Path
 import multiprocessing
-from typing import Union, List
+from typing import Any, Optional, Union, List
 
 
 def __best_fitting_dtype(vocab_size: int = None):
@@ -352,6 +352,40 @@ class MMapIndexedDataset(torch.utils.data.Dataset):
     def exists(path):
         return os.path.exists(index_file_path(path)) and os.path.exists(
             data_file_path(path)
+        )
+
+    def split(
+        self,
+        splits: Union[List[float], str],
+        num_samples: List[int],
+        seq_length: int,
+        seed: int = 0,
+        mpu: Optional[Any] = None,
+    ):
+        """
+        Build multiple `LMDatasets` from an indexed dataset.
+
+        :param splits:
+        A list of floats or a string. If a string, it should be a comma-separated
+        list of floats between 0.0 and 1.0.
+        :param num_samples:
+            A list of integers representing the number of samples in each split.
+        :param seq_length:
+            The sequence length of the model
+        :param seed:
+            The random seed to use for shuffling.
+        :param mpu:
+            If using multiprocessing, provide an mpu.
+        """
+        from .lm_dataset import from_splits
+
+        return from_splits(
+            indexed_dataset=self,
+            splits=splits,
+            num_samples=num_samples,
+            seq_length=seq_length,
+            seed=seed,
+            mpu=mpu,
         )
 
 
