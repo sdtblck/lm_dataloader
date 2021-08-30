@@ -86,7 +86,9 @@ def test_lmd_from_url():
     if CACHE_DIR.exists():
         shutil.rmtree(CACHE_DIR)
 
-    dataset = LMDataset(DUMMY_URL, seq_length=1024, cache_dir=CACHE_DIR)
+    dataset = LMDataset(
+        DUMMY_URL, seq_length=1024, cache_dir=CACHE_DIR, mode="pad", pad_token=0
+    )
     assert len(dataset) > 0
 
 
@@ -140,9 +142,10 @@ def test_inspect_dataset():
     main()
 
 
-# test_encode()
-test_merge_datasets()
-# test_lmd_from_url()
-# test_mmap_from_urls()
-# test_mmap_from_url()
-# test_inspect_dataset()
+if __name__ == "__main__":
+    test_encode()
+    test_merge_datasets()
+    test_lmd_from_url()
+    test_mmap_from_urls()
+    test_mmap_from_url()
+    test_inspect_dataset()

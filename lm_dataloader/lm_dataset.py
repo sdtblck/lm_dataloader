@@ -50,6 +50,8 @@ class LMDataset(torch.utils.data.Dataset):
         mpu=None,
         cache_dir: Optional[Union[str, Path]] = None,
         skip_warmup: bool = False,
+        mode: str = "pack",
+        pad_token: int = None,
     ):
         print(f"Beginning init of {self}")
         self.cache_dir = get_cache_dir(
@@ -73,6 +75,14 @@ class LMDataset(torch.utils.data.Dataset):
         self.seed = seed
         self.skip_warmup = skip_warmup
         self.sizes = self.indexed_dataset.sizes
+        self.mode = mode.lower()
+        assert self.mode in [
+            "pack",
+            "pad",
+        ], f"mode must be 'pack' or 'pad', got {self.mode}"
+        self.pad_token = pad_token
+        if self.mode == "pad":
+            assert self.pad_token is not None, "pad_token must be set if mode == pad"
 
         # build document index
         if documents is None:
@@ -110,8 +120,26 @@ class LMDataset(torch.utils.data.Dataset):
             doc_index_l = self.sample_idx[idx + 1][0]
             offset_f = self.sample_idx[idx][1]
             offset_l = self.sample_idx[idx + 1][1]
-            # If we are within the same document, just extract the chunk.
-            if doc_index_f == doc_index_l:
+            if self.mode == "pad":
+                # if we are in pad mode, we only ever sample one document
+                sample = self.indexed_dataset.get(
+                    self.doc_idx[doc_index_f], offset=offset_f
+                )
+
+                # if the sample is shorter than the seq_length, pad it
+                if len(sample) < self.seq_length + 1:
+                    sample = np.pad(
+                        sample,
+                        (0, self.seq_length + 1 - len(sample)),
+                        mode="constant",
+                        constant_values=self.pad_token,
+                    )
+                else:
+                    # otherwise, truncate it.
+                    # TODO: we'll lose some data here. How to avoid? (self.sizes gives us the size of each document, could use that)
+                    sample = sample[: self.seq_length + 1]
+            elif doc_index_f == doc_index_l:
+                # If we are within the same document, just extract the chunk.
                 sample = self.indexed_dataset.get(
                     self.doc_idx[doc_index_f],
                     offset=offset_f,
@@ -166,7 +194,7 @@ class LMDataset(torch.utils.data.Dataset):
         _filename += "_{}sl".format(self.seq_length)
         _filename += "_{}s".format(self.seed)
         doc_idx_filename = _filename + "_doc_idx.npy"
-        sample_idx_filename = _filename + "_sample_idx.npy"
+        sample_idx_filename = _filename + f"_{self.mode}_sample_idx.npy"
         shuffle_idx_filename = _filename + "_shuffle_idx.npy"
 
         # Build the indexed mapping if not exist.
@@ -194,28 +222,37 @@ class LMDataset(torch.utils.data.Dataset):
 
                 assert doc_idx.dtype == np.int32
                 assert self.sizes.dtype == np.int32
+                if self.mode == "pad":
+                    sample_idx = np.concatenate(
+                        (
+                            np.expand_dims(np.arange(len(doc_idx)), 1),
+                            np.expand_dims(np.zeros(len(doc_idx)), 1),
+                        ),
+                        axis=1,
+                    ).astype(
+                        np.int32
+                    )  # map each sample straight to each document. I.e no packing. Each sample is padded to the sequence length.
+                else:
+                    try:
+                        from .helpers import build_sample_idx
 
-                try:
-                    from .helpers import build_sample_idx
-
-                    sample_idx = build_sample_idx(
-                        self.sizes,
-                        doc_idx,
-                        self.seq_length,
-                        num_epochs,
-                        tokens_per_epoch,
-                    )
-                except ImportError:
-                    error_msg = "Could not find C++ helpers module - please make sure to run lm_dataloader.compile_helpers()."
-                    error_msg += "\n Falling back to the python implementation (Will be much slower)"
-                    print_rank_0(error_msg)
-                    sample_idx = _build_sample_idx(
-                        self.sizes,
-                        doc_idx,
-                        self.seq_length,
-                        num_epochs,
-                        tokens_per_epoch,
-                    )
+                        sample_idx = build_sample_idx(
+                            self.sizes,
+                            doc_idx,
+                            self.seq_length,
+                            num_epochs,
+                            tokens_per_epoch,
+                        )
+                    except ImportError:
+                        error_msg = "Could not find C++ helpers module - please make sure to run lm_dataloader.compile_helpers()."
+                        error_msg += "\n Falling back to the python implementation (Will be much slower)"
+                        sample_idx = _build_sample_idx(
+                            self.sizes,
+                            doc_idx,
+                            self.seq_length,
+                            num_epochs,
+                            tokens_per_epoch,
+                        )
 
                 np.save(sample_idx_filename, sample_idx, allow_pickle=True)
                 print_rank_0(
@@ -277,7 +314,7 @@ def _num_epochs(tokens_per_epoch, seq_length, num_samples):
 
 
 def _build_doc_idx(documents, num_epochs, np_rng):
-    """Build an array with length = number-of-epochs * number-of-dcuments.
+    """Build an array with length = number-of-epochs * number-of-documents.
     Each index is mapped to a corresponding document."""
     doc_idx = np.mgrid[0:num_epochs, 0 : len(documents)][1]
     doc_idx[:] = documents
@@ -306,7 +343,6 @@ def _build_sample_idx(sizes, doc_idx, seq_length, num_epochs, tokens_per_epoch):
     # Total number of samples. For -1 see comments in `_num_epochs`.
     num_samples = (num_epochs * tokens_per_epoch - 1) // seq_length
     sample_idx = np.zeros([num_samples + 1, 2], dtype=np.int32)
-
     # Index into sample_idx.
     sample_index = 0
     # Index into doc_idx.
@@ -418,4 +454,3 @@ def from_splits(
         )
 
     return datasets
-    
