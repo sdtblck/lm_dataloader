@@ -4,8 +4,8 @@ from pathlib import Path
 import requests
 from typing import Tuple
 import tqdm
-import sys 
-import subprocess 
+import sys
+import subprocess
 import time
 from .global_vars import S3_CLIENT
 
@@ -23,41 +23,44 @@ def compile_helpers():
     path = os.path.abspath(os.path.dirname(__file__))
     ret = subprocess.run(["make", "-C", path])
     if ret.returncode != 0:
-        print("Making C++ dataset helpers module failed, exiting.")
-        import sys
+        raise SystemError("Making C++ dataset helpers module failed, exiting.")
 
-        sys.exit(1)
 
-def human_size(bytes, units=[' bytes','KB','MB','GB','TB', 'PB', 'EB']):
+def human_size(bytes, units=[" bytes", "KB", "MB", "GB", "TB", "PB", "EB"]):
     """ Returns a human readable string representation of bytes """
-    return str(bytes) + units[0] if bytes < 1024 else human_size(bytes>>10, units[1:])
+    return str(bytes) + units[0] if bytes < 1024 else human_size(bytes >> 10, units[1:])
+
 
 def validate_s3():
-    import boto3 
-    sts = boto3.client('sts')
+    import boto3
+
+    sts = boto3.client("sts")
     try:
         sts.get_caller_identity()
     except boto3.exceptions.ClientError as e:
         print("AWS credentials are not valid.")
         raise e
 
+
 def s3_download(s3_filename, local_filename):
     validate_s3()
-    assert s3_filename.lower().startswith('s3://'), "must be an s3 path"
-    path = s3_filename.replace('s3://', '').replace('S3://', '')
-    bucket = path.split('/')[0]
-    object_key = '/'.join(path.split('/')[1:])
+    assert s3_filename.lower().startswith("s3://"), "must be an s3 path"
+    path = s3_filename.replace("s3://", "").replace("S3://", "")
+    bucket = path.split("/")[0]
+    object_key = "/".join(path.split("/")[1:])
     _s3_download(local_filename, bucket, object_key)
+
 
 def _s3_download(local_file_name, s3_bucket, s3_object_key):
 
     global S3_CLIENT
     if S3_CLIENT is None:
         import boto3
-        S3_CLIENT = boto3.client('s3')
+
+        S3_CLIENT = boto3.client("s3")
 
     meta_data = S3_CLIENT.head_object(Bucket=s3_bucket, Key=s3_object_key)
-    total_length = int(meta_data.get('ContentLength', 0))
+    total_length = int(meta_data.get("ContentLength", 0))
     t = human_size(total_length)
     start = time.time()
 
@@ -76,9 +79,10 @@ def _s3_download(local_file_name, s3_bucket, s3_object_key):
         sys.stdout.write(progress_str)
         sys.stdout.flush()
 
-    print(f'Downloading {s3_object_key} to {local_file_name}')
-    with open(local_file_name, 'wb') as f:
+    print(f"Downloading {s3_object_key} to {local_file_name}")
+    with open(local_file_name, "wb") as f:
         S3_CLIENT.download_fileobj(s3_bucket, s3_object_key, f, Callback=progress)
+
 
 def is_main():
     """
