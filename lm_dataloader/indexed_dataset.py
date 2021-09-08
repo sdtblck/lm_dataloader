@@ -248,6 +248,10 @@ class MMapIndexedDataset(torch.utils.data.Dataset):
         return cls.from_urls(bin_url, idx_url, dataset_name, cache_dir, skip_warmup)
 
     @classmethod
+    def from_s3_path(cls, url, cache_dir=None, skip_warmup=False):
+        raise NotImplementedError
+
+    @classmethod
     def from_urls(
         cls, bin_url, idx_url, dataset_name=None, cache_dir=None, skip_warmup=False
     ):
@@ -359,6 +363,8 @@ class MMapIndexedDataset(torch.utils.data.Dataset):
         splits: Union[List[float], str],
         num_samples: List[int],
         seq_length: int,
+        mode: str = "pack",
+        pad_token: int = None,
         seed: int = 0,
         mpu: Optional[Any] = None,
     ):
@@ -384,6 +390,8 @@ class MMapIndexedDataset(torch.utils.data.Dataset):
             splits=splits,
             num_samples=num_samples,
             seq_length=seq_length,
+            mode=mode,
+            pad_token=pad_token,
             seed=seed,
             mpu=mpu,
         )

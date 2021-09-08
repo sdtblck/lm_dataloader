@@ -76,6 +76,29 @@ def test_merge_datasets():
     )
     assert len(merged) == len(dataset_1) + len(dataset_2)
 
+def test_split_dataset():
+    """Tests splitting a dataset into train/val/test splits"""
+    
+    # get dataset from url
+    assert url_exists(DUMMY_URL), "Dummy URL does not exist"
+
+    # reset cache dir
+    if CACHE_DIR.exists():
+        shutil.rmtree(CACHE_DIR)
+
+    # test pad (each document = 1 sample)
+    dataset = MMapIndexedDataset.from_url(DUMMY_URL, cache_dir=CACHE_DIR)
+    train, val, test = dataset.split([0.9, 0.05, 0.05], [None, None, None], seq_length=2048, pad_token=0, mode="pad")
+    assert len(train) == 808
+    assert len(val) == 43
+    assert len(test) == 43
+    
+    # test pad (each sample = n documents)
+    train, val, test = dataset.split([0.9, 0.05, 0.05], [None, None, None], seq_length=2048)
+    assert len(train) == 226
+    assert len(val) == 12
+    assert len(test) == 11
+
 
 def test_lmd_from_url():
     """Test loading a dataset from a URL"""
@@ -141,6 +164,25 @@ def test_inspect_dataset():
     sys.argv = ["inspect", output_path]
     main()
 
+def test_set_mpu():
+    from lm_dataloader import set_mpu
+    from argparse import Namespace
+    test_mpu = Namespace(hello='world')
+    set_mpu(test_mpu)
+    
+    assert url_exists(DUMMY_URL), "Dummy URL does not exist"
+
+    # reset cache dir
+    if CACHE_DIR.exists():
+        shutil.rmtree(CACHE_DIR)
+
+    from lm_dataloader import LMDataset
+
+    dataset = LMDataset(
+        DUMMY_URL, seq_length=1024, cache_dir=CACHE_DIR, mode="pad", pad_token=0
+    )
+    assert dataset.mpu == test_mpu
+
 
 if __name__ == "__main__":
     test_encode()
@@ -148,4 +190,5 @@ if __name__ == "__main__":
     test_lmd_from_url()
     test_mmap_from_urls()
     test_mmap_from_url()
+    test_set_mpu()
     test_inspect_dataset()

@@ -12,19 +12,17 @@ pip install lm_dataloader
 
 - follows fairseq / megatron's 'mmap' dataformat, but with improvements. Those being:
     - [x] Easily combine multiple datasets
-    - [ ] Easily split a dataset into train / val / test splits
+    - [x] Easily split a dataset into train / val / test splits
     - [x] Easily build a weighted dataset out of a list of existing ones along with weights.
     - [x] unified into a single 'file' (which is actually a directory containing a .bin / .idx file)
     - [x] index files that are built on the fly are hidden files, leaving less mess in the directory.
     - [ ] More straightforward interface, better documentation.
     - [x] Inspectable with a command line tool
     - [x] Can load from urls
-    - [ ] Can load from S3 buckets
+    - [x] Can load from S3 buckets
     - [ ] Can load from GCS buckets
     - [ ] Can tokenize *on the fly* instead of preprocessing
-
-Misc. TODO:
-    - [ ] Option to set mpu globally (for distributed dataloading)
+    - [x] Option to set mpu globally (for distributed dataloading)
 
 # Example usage
 

@@ -27,10 +27,12 @@ import torch
 try:
     from .utils import print_rank_0, is_main, get_cache_dir
     from .indexed_dataset import make_indexed_dataset, MMapIndexedDataset
+    from .global_vars import get_mpu
 except ImportError:
     print("got an import error")
     from utils import print_rank_0, is_main, get_cache_dir
     from indexed_dataset import make_indexed_dataset, MMapIndexedDataset
+    from global_vars import get_mpu
 
 from pathlib import Path
 from typing import Optional, Union, List, Any
@@ -65,8 +67,8 @@ class LMDataset(torch.utils.data.Dataset):
             )
         else:
             self.indexed_dataset = indexed_dataset
-
-        self.mpu = mpu  # optional mpu object from megatron
+        global MPU 
+        self.mpu = mpu or get_mpu()  # optional mpu object from megatron
         self.data_prefix = (
             self.indexed_dataset._path
         )  # get actual prefix from indexed_dataset, data_prefix may be url or local path
@@ -386,6 +388,8 @@ def from_splits(
     splits: Union[List[float], str],
     num_samples: List[int],
     seq_length: int,
+    mode: str = "pack",
+    pad_token: int = None,
     seed: int = 0,
     mpu: Optional[Any] = None,
 ) -> List[LMDataset]:
@@ -449,6 +453,8 @@ def from_splits(
                 indexed_dataset=indexed_dataset,
                 documents=np.arange(start=start, stop=end, dtype=np.int32),
                 seed=seed,
+                mode=mode,
+                pad_token=pad_token,
                 mpu=mpu,
             )
         )

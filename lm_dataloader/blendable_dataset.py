@@ -23,9 +23,11 @@ import torch
 try:
     from .utils import print_rank_0, is_main, get_rank
     from .lm_dataset import LMDataset
+    from .global_vars import MPU
 except ImportError:
     from lm_dataset import LMDataset
     from utils import print_rank_0, is_main, get_rank
+    from global_vars import MPU
 
 from typing import List
 

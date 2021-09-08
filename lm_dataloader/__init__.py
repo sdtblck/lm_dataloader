@@ -8,6 +8,7 @@ from .indexed_dataset import (
     merge_datasets,
 )
 from .utils import compile_helpers
+from .global_vars import set_mpu
 
 try:
     from .helpers import *
