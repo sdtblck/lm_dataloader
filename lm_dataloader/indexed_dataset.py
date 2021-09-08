@@ -24,6 +24,7 @@ except ImportError:
 from pathlib import Path
 import multiprocessing
 from typing import Any, Optional, Union, List
+from tqdm import tqdm
 
 
 def __best_fitting_dtype(vocab_size: int = None):
@@ -396,6 +397,12 @@ class MMapIndexedDataset(torch.utils.data.Dataset):
             mpu=mpu,
         )
 
+    def filter(self, out_file: Union[Path, str], indices: List[int]):
+        """
+        Filters the dataset by indices, and saves to `out_file`
+        """
+        return filter_dataset(self, out_file, indices)
+
 
 class MMapIndexedDatasetBuilder(object):
     def __init__(self, file_prefix, dtype=np.int64, open_mode="wb"):
@@ -411,7 +418,11 @@ class MMapIndexedDatasetBuilder(object):
         self._doc_idx = [0]
 
     def add_item(self, tensor):
-        np_array = np.array(tensor.numpy(), dtype=self._dtype)
+        if isinstance(tensor, np.ndarray):
+            np_array = np.array(tensor, dtype=self._dtype)
+        else:
+            assert isinstance(tensor, torch.Tensor)
+            np_array = np.array(tensor.numpy(), dtype=self._dtype)
         self._data_file.write(np_array.tobytes(order="C"))
         self._sizes.append(np_array.size)
 
@@ -456,6 +467,22 @@ def merge_datasets(datasets: List[Union[Path, str]], out_file: Union[Path, str])
     builder = MMapIndexedDatasetBuilder(out_file, dtype=dtype)
     for dataset in datasets:
         builder += dataset
+    return builder.finalize()
+
+
+def filter_dataset(
+    dataset: MMapIndexedDataset, out_file: Union[Path, str], indices: List[int]
+):
+    """
+    Filter a dataset by indices.
+    """
+    dtype = MMapIndexedDataset.Index(index_file_path(dataset._path)).dtype
+    builder = MMapIndexedDatasetBuilder(out_file, dtype=dtype)
+    for i, item in tqdm(
+        enumerate(dataset), desc="Filtering dataset...", total=len(dataset)
+    ):
+        if i in indices:
+            builder.add_item(item)
     return builder.finalize()
 
 
