@@ -7,6 +7,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+from lm_dataloader.utils import s3_download
 import os
 import shutil
 import struct
@@ -43,16 +44,18 @@ def make_indexed_dataset(
 ):
     if isinstance(data_prefix, Path):
         data_prefix = str(data_prefix)
-    if not MMapIndexedDataset.exists(data_prefix) and not data_prefix.startswith(
-        "http://"
-    ):
-        error_msg = f"Dataset does not exist: {data_prefix}"
-        error_msg += "\nPath should be a basename that both .idx and .bin can be appended to get full filenames."
-        raise FileNotFoundError(error_msg)
-    elif data_prefix.startswith("http://"):
+    if data_prefix.startswith("http://") or data_prefix.startswith("https://"):
         return MMapIndexedDataset.from_url(
             data_prefix, cache_dir=cache_dir, skip_warmup=skip_warmup
         )
+    elif data_prefix.lower().startswith("s3://"):
+        return MMapIndexedDataset.from_s3_path(
+            data_prefix, cache_dir=cache_dir, skip_warmup=skip_warmup
+        )
+    elif not MMapIndexedDataset.exists(data_prefix):
+        error_msg = f"Dataset does not exist: {data_prefix}"
+        error_msg += "\nPath should be a basename that both .idx and .bin can be appended to get full filenames."
+        raise FileNotFoundError(error_msg)
     else:
         return MMapIndexedDataset(data_prefix, skip_warmup)
 
@@ -250,7 +253,36 @@ class MMapIndexedDataset(torch.utils.data.Dataset):
 
     @classmethod
     def from_s3_path(cls, url, cache_dir=None, skip_warmup=False):
-        raise NotImplementedError
+        url = Path(url)
+        dataset_name = url.stem
+        bin_url = (
+            str(data_file_path(url)).replace("S3:/", "s3:/").replace("s3:/", "s3://")
+        )
+        idx_url = (
+            str(index_file_path(url)).replace("S3:/", "s3:/").replace("s3:/", "s3://")
+        )
+        raise cls.from_s3_paths(bin_url, idx_url, dataset_name, cache_dir, skip_warmup)
+
+    @classmethod
+    def from_s3_paths(
+        cls, bin_url, idx_url, dataset_name=None, cache_dir=None, skip_warmup=False
+    ):
+        cache_dir = get_cache_dir(cache_dir)
+        dataset_name = dataset_name or Path(bin_url).parent.stem
+        prefix_path = cache_dir / f"{dataset_name}.lmd"
+
+        os.makedirs(prefix_path, exist_ok=True)
+        if os.path.exists(prefix_path / "dset.bin") and os.path.exists(
+            prefix_path / "dset.idx"
+        ):
+            print_rank_0(f"Using cached dataset at {prefix_path}")
+            return cls(prefix_path, skip_warmup)
+        else:
+            bin_out_path = data_file_path(prefix_path)
+            idx_out_path = index_file_path(prefix_path)
+            s3_download(bin_url, bin_out_path)
+            s3_download(idx_url, idx_out_path)
+            return cls(prefix_path, skip_warmup)
 
     @classmethod
     def from_urls(

@@ -5,7 +5,6 @@ import requests
 from typing import Tuple
 import tqdm
 import sys
-import subprocess
 import time
 from .global_vars import S3_CLIENT
 
