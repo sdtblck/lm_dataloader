@@ -16,7 +16,7 @@ except ModuleNotFoundError:
     try:
         compile_helpers()
         from .helpers import *
-    except ModuleNotFoundError:
+    except (ModuleNotFoundError, SystemError):
         print(
             "Not able to compile C++ helpers. Some functions may be slower, or not work at all (blendable_dataset)"
         )

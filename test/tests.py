@@ -15,6 +15,8 @@ import shutil
 DUMMY_URL = "http://eaidata.bmk.sh/data/dummy.lmd"
 DUMMY_BIN_URL = "http://eaidata.bmk.sh/data/dummy.lmd/dset.bin"
 DUMMY_IDX_URL = "http://eaidata.bmk.sh/data/dummy.lmd/dset.idx"
+DUMMY_S3_BIN_URL = None
+DUMMY_S3_IDX_URL = None
 DATA_DIR = Path(os.path.join(os.path.dirname(__file__), "test_data"))
 CACHE_DIR = DATA_DIR / ".cache"
 
@@ -76,9 +78,10 @@ def test_merge_datasets():
     )
     assert len(merged) == len(dataset_1) + len(dataset_2)
 
+
 def test_split_dataset():
     """Tests splitting a dataset into train/val/test splits"""
-    
+
     # get dataset from url
     assert url_exists(DUMMY_URL), "Dummy URL does not exist"
 
@@ -88,13 +91,17 @@ def test_split_dataset():
 
     # test pad (each document = 1 sample)
     dataset = MMapIndexedDataset.from_url(DUMMY_URL, cache_dir=CACHE_DIR)
-    train, val, test = dataset.split([0.9, 0.05, 0.05], [None, None, None], seq_length=2048, pad_token=0, mode="pad")
+    train, val, test = dataset.split(
+        [0.9, 0.05, 0.05], [None, None, None], seq_length=2048, pad_token=0, mode="pad"
+    )
     assert len(train) == 808
     assert len(val) == 43
     assert len(test) == 43
-    
+
     # test pad (each sample = n documents)
-    train, val, test = dataset.split([0.9, 0.05, 0.05], [None, None, None], seq_length=2048)
+    train, val, test = dataset.split(
+        [0.9, 0.05, 0.05], [None, None, None], seq_length=2048
+    )
     assert len(train) == 226
     assert len(val) == 12
     assert len(test) == 11
@@ -164,12 +171,14 @@ def test_inspect_dataset():
     sys.argv = ["inspect", output_path]
     main()
 
+
 def test_set_mpu():
     from lm_dataloader import set_mpu
     from argparse import Namespace
-    test_mpu = Namespace(hello='world')
+
+    test_mpu = Namespace(hello="world")
     set_mpu(test_mpu)
-    
+
     assert url_exists(DUMMY_URL), "Dummy URL does not exist"
 
     # reset cache dir
@@ -184,6 +193,22 @@ def test_set_mpu():
     assert dataset.mpu == test_mpu
 
 
+def test_mmap_from_s3():
+    """Test loading a mmap indexed dataset from multiple S3 URLs"""
+    assert DUMMY_S3_BIN_URL is not None, "Dummy .bin URL does not exist"
+    assert DUMMY_S3_IDX_URL is not None, "Dummy .idx URL does not exist"
+
+    # reset cache dir
+    if CACHE_DIR.exists():
+        shutil.rmtree(CACHE_DIR)
+
+    dataset = MMapIndexedDataset.from_s3_paths(
+        DUMMY_S3_BIN_URL, DUMMY_S3_IDX_URL, cache_dir=CACHE_DIR
+    )
+
+    assert len(dataset) > 0
+
+
 if __name__ == "__main__":
     test_encode()
     test_merge_datasets()
@@ -192,3 +217,4 @@ if __name__ == "__main__":
     test_mmap_from_url()
     test_set_mpu()
     test_inspect_dataset()
+    # test_mmap_from_s3() # need to provide DUMMY_S3_BIN_URL / DUMMY_S3_IDX_URL to run this test
