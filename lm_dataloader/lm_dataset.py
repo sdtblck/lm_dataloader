@@ -28,8 +28,8 @@ try:
     from .utils import print_rank_0, is_main, get_cache_dir
     from .indexed_dataset import make_indexed_dataset, MMapIndexedDataset
     from .global_vars import get_mpu
-except ImportError:
-    print("got an import error")
+except ImportError as e:
+    print(f"got an import error {e}")
     from utils import print_rank_0, is_main, get_cache_dir
     from indexed_dataset import make_indexed_dataset, MMapIndexedDataset
     from global_vars import get_mpu
@@ -67,7 +67,7 @@ class LMDataset(torch.utils.data.Dataset):
             )
         else:
             self.indexed_dataset = indexed_dataset
-        global MPU 
+        global MPU
         self.mpu = mpu or get_mpu()  # optional mpu object from megatron
         self.data_prefix = (
             self.indexed_dataset._path
@@ -98,7 +98,12 @@ class LMDataset(torch.utils.data.Dataset):
         else:
             self.documents = documents
 
-        self.num_samples = num_samples or self.tokens_per_epoch() // self.seq_length
+        self.num_samples = num_samples
+        if self.num_samples is None:
+            if self.mode == "pad":
+                self.num_samples = self.indexed_dataset.sizes.shape[0]
+            else:
+                self.num_samples = self.tokens_per_epoch() // self.seq_length
 
         if build_index_mappings:
             # Build index mappings.
@@ -300,7 +305,7 @@ class LMDataset(torch.utils.data.Dataset):
 
 
 def _num_epochs(tokens_per_epoch, seq_length, num_samples):
-    """Based on number of samples and sequence lenght, calculate how many
+    """Based on number of samples and sequence length, calculate how many
     epochs will be needed."""
     num_epochs = 0
     total_tokens = 0

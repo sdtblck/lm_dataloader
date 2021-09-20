@@ -29,24 +29,116 @@ except ImportError:
     from utils import print_rank_0, is_main, get_rank
     from global_vars import MPU
 
-from typing import List
+from typing import List, Tuple, Optional
+import math
+
+
+def weights_by_num_docs(l, alpha=0.3):
+    """
+    Builds weights from a multinomial distribution over groups of data according to the number of
+    samples in each group.
+    We sample from a group according to the probability p(L) ∝ |L| ** α,
+    where p(L) is the probability of sampling from a given group,
+          |L| is the number of examples in that datapoint,
+          and α is a coefficient that acts to upsample data from underrepresented groups
+    Hence α (`alpha`) allows us to control how much to 'boost' the probability of training on low-resource groups.
+    See https://arxiv.org/abs/1911.02116 for more details
+    """
+    total_n_docs = sum(l)
+    unbiased_sample_probs = [i / total_n_docs for i in l]
+
+    probs = [i ** alpha for i in unbiased_sample_probs]
+
+    # normalize
+    total = sum(probs)
+    probs = [i / total for i in probs]
+
+    # weights should be the inverse of the number of samples
+    unbiased_sample_probs_inverse = [1 - p for p in unbiased_sample_probs]
+    weights = [p * p2 for p, p2 in zip(probs, unbiased_sample_probs_inverse)]
+
+    # normalize
+    total = sum(weights)
+    weights = [i / total for i in weights]
+
+    return weights
+
+
+def get_normalized_weights_and_num_samples(
+    weights: List[float], num_samples: int
+) -> Tuple[List[float], List[int]]:
+    """
+    Distributes the total number of samples (`num_samples`) among the groups in `weights`
+    i.e with weights = [0.3, 0.2, 0.5] and num_samples = 10,
+    The outputs should be [0.3, 0.2, 0.5] and [3, 2, 5] respectively
+    """
+    # Normalize weights
+    weight_sum = sum(weights)
+    assert weight_sum > 0.0
+    weights = [weight / weight_sum for weight in weights]
+    # Add 0.5% (the 1.005 factor) so in case the blending dataset does
+    # not uniformly distribute the number of samples, we still have
+    # samples left to feed to the network.
+    weighted_num_samples = []
+    for weight in weights:
+        weighted_num_samples.append(int(math.ceil(num_samples * weight * 1.005)))
+    return weights, weighted_num_samples
 
 
 class BlendableDataset(torch.utils.data.Dataset):
-    def __init__(self, datasets: List[LMDataset], weights: np.ndarray, mpu=None):
+    def __init__(
+        self,
+        datasets: List[LMDataset],
+        weights: Optional[np.ndarray] = None,
+        weight_by_num_docs=False,
+        weighted_sampler_alpha=0.3,
+        mpu=None,
+    ):
         self.datasets = datasets
         num_datasets = len(datasets)
-        assert num_datasets == len(weights)
 
         self.size = 0
         for dataset in self.datasets:
             self.size += len(dataset)
+
+        self.weight_by_num_docs = weight_by_num_docs
+        self.weighted_sampler_alpha = weighted_sampler_alpha
+        if weights is None:
+            assert (
+                self.weight_by_num_docs
+            ), "Must provide weights if not weighting by number of docs"
+        if self.weight_by_num_docs:
+            num_docs = [len(dataset) for dataset in self.datasets]
+            weights = weights_by_num_docs(num_docs, alpha=self.weighted_sampler_alpha)
+            total_num_samples = sum([d.num_samples for d in self.datasets])
+            weights, weighted_num_samples = get_normalized_weights_and_num_samples(
+                weights, total_num_samples
+            )
+            for i in range(num_datasets):
+                # rebuild the datasets with the new num samples
+                og_ds = self.datasets[i]
+                self.datasets[i] = og_ds.__class__(
+                    data_prefix=og_ds.data_prefix,
+                    seq_length=og_ds.seq_length,
+                    num_samples=weighted_num_samples[i],
+                    indexed_dataset=og_ds.indexed_dataset,
+                    documents=og_ds.documents,
+                    seed=og_ds.seed,
+                    mpu=og_ds.mpu,
+                    cache_dir=og_ds.cache_dir,
+                    skip_warmup=og_ds.skip_warmup,
+                    mode=og_ds.mode,
+                    pad_token=og_ds.pad_token,
+                )
 
         # Normalize weights.
         weights = np.array(weights, dtype=np.float64)
         sum_weights = np.sum(weights)
         assert sum_weights > 0.0
         weights /= sum_weights
+        self.weights = weights
+
+        assert num_datasets == len(self.weights)
 
         # Build indices.
         start_time = time.time()
@@ -54,12 +146,12 @@ class BlendableDataset(torch.utils.data.Dataset):
         self.dataset_index = np.zeros(self.size, dtype=np.uint8)
         self.dataset_sample_index = np.zeros(self.size, dtype=np.int64)
 
-        import helpers
+        from .helpers import build_blending_indices
 
-        helpers.build_blending_indices(
+        build_blending_indices(
             self.dataset_index,
             self.dataset_sample_index,
-            weights,
+            self.weights,
             num_datasets,
             self.size,
             is_main(),

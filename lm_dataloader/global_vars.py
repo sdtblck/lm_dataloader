@@ -1,15 +1,18 @@
 S3_CLIENT = None
 MPU = None
 
+
 def set_mpu(mpu):
     global MPU
     if MPU is None:
         MPU = mpu
     else:
-        raise ValueError('mpu already initialized')
+        raise ValueError("mpu already initialized")
+
 
 def get_mpu():
     global MPU
     if MPU is None:
-        raise ValueError('mpu not initialized')
+        print("mpu not initialized, please call set_mpu() first")
+        print("Returning None")
     return MPU

@@ -7,7 +7,7 @@ sys.path.append(
 )
 
 from lm_dataloader.indexed_dataset import merge_datasets
-from lm_dataloader import LMDataset, encode, MMapIndexedDataset
+from lm_dataloader import LMDataset, encode, MMapIndexedDataset, BlendableDataset
 from lm_dataloader.encode import tokenize_char_level
 import requests
 import shutil
@@ -120,6 +120,7 @@ def test_lmd_from_url():
         DUMMY_URL, seq_length=1024, cache_dir=CACHE_DIR, mode="pad", pad_token=0
     )
     assert len(dataset) > 0
+    return dataset
 
 
 def test_mmap_from_url():
@@ -209,12 +210,22 @@ def test_mmap_from_s3():
     assert len(dataset) > 0
 
 
+def test_blendable_ds():
+    dataset1 = test_lmd_from_url()
+    dataset2 = test_lmd_from_url()
+    blended = BlendableDataset([dataset1, dataset2], weights=[0.3, 0.7])
+    blended_2 = BlendableDataset(
+        [dataset1, dataset2], weight_by_num_docs=True, weighted_sampler_alpha=0.3
+    )
+
+
 if __name__ == "__main__":
-    test_encode()
-    test_merge_datasets()
-    test_lmd_from_url()
-    test_mmap_from_urls()
-    test_mmap_from_url()
-    test_set_mpu()
-    test_inspect_dataset()
+    # test_encode()
+    # test_merge_datasets()
+    # test_lmd_from_url()
+    # test_mmap_from_urls()
+    # test_mmap_from_url()
+    # test_set_mpu()
+    # test_inspect_dataset()
     # test_mmap_from_s3() # need to provide DUMMY_S3_BIN_URL / DUMMY_S3_IDX_URL to run this test
+    test_blendable_ds()

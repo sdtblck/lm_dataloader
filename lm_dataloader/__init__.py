@@ -7,6 +7,7 @@ from .indexed_dataset import (
     inspect_dataset,
     merge_datasets,
 )
+from .blendable_dataset import BlendableDataset
 from .utils import compile_helpers
 from .global_vars import set_mpu
 
